@@ -1,0 +1,8 @@
+FROM alpine
+CMD ["/factorizer"]
+ADD factorizer.c /factorizer.c
+RUN apk update &&\
+  apk add gcc musl-dev &&\
+  gcc -O2 /factorizer.c -o /factorizer &&\
+  apk del gcc musl-dev &&\
+  rm -rf /var/cache/apk/
