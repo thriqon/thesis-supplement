@@ -1,0 +1,20 @@
+<div class="title-bar">
+  <div class="title-bar-left">
+    <ul class="dropdown menu" data-dropdown-menu>
+      <li>{{#link-to 'posts'}}Blog{{/link-to}}</li>
+    </ul>
+  </div>
+  <div class="title-bar-right">
+    <ul class="menu">
+      <li>
+        {{#link-to 'new_post' class="button"}}
+          New Post
+        {{/link-to}}
+      </li>
+    </ul>
+  </div>
+</div>
+
+<p></p>
+
+{{outlet}}

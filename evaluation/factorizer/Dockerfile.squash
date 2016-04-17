@@ -1,0 +1,5 @@
+
+FROM alpine
+RUN apk add --no-cache gcc musl-dev
+ADD factorizer.c /
+RUN gcc -o /factorizer /factorizer.c && rm -f /factorizer.c && apk del gcc musl-dev && rm -rf /var/cache/apk/

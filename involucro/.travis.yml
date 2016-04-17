@@ -1,0 +1,110 @@
+
+language: go
+
+git:
+  depth: 99999
+
+sudo: false
+env: MODE=unit FILENAME=involucro
+
+matrix:
+  include:
+    - os: osx
+      env: MODE=unit FILENAME=involucro.darwin
+    - os: linux
+      sudo: required
+      env: MODE=integration DOCKER_VERSION=1.9.1 FILENAME=involucro
+      services: [docker]
+    - os: linux
+      sudo: required
+      env: MODE=integration DOCKER_VERSION=1.8.3 FILENAME=involucro
+      services: [docker]
+    - os: linux
+      sudo: required
+      env: MODE=integration DOCKER_VERSION=latest FILENAME=involucro
+      services: [docker]
+    - os: linux
+      env: MODE=windows-build
+
+go: 1.6
+
+install:
+  # Replace existing Docker with specific version
+  - |
+    if [[ "$MODE" == "integration" ]]; then
+      sudo service docker stop
+      wget https://test.docker.com/builds/Linux/x86_64/docker-$DOCKER_VERSION -O docker
+      chmod +x docker
+      sudo ./docker daemon --log-level=fatal &
+    fi
+
+before_script:
+  - |
+    if [ "x$TRAVIS_SECURE_ENV_VARS" = "xtrue" ]; then
+      echo '{"auths": ["'${HUB_TOKEN}'"]}' > ~/.involucro
+    fi
+
+script:
+  - PKGS="./internal/... ./auth"
+  - if [[ "$MODE" == "unit" ]]; then go test -v -short $PKGS ; fi
+  - |
+    if [[ "$MODE" == "windows-build" ]]; then
+      go get -u github.com/josephspurrier/goversioninfo/cmd/goversioninfo
+
+      $GOPATH/bin/goversioninfo "-product-version=$(git describe)"
+      CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o involucro.exe -ldflags "-s -w -X github.com/thriqon/involucro/app.version=$(git describe)" ./cmd/involucro
+      CGO_ENABLED=0 GOOS=windows GOARCH=386 go build -o involucro32.exe -ldflags "-s -w -X github.com/thriqon/involucro/app.version=$(git describe)" ./cmd/involucro
+      file involucro.exe involucro32.exe
+    else
+      CGO_ENABLED=0 go build -o $FILENAME -ldflags "-s -w -X github.com/thriqon/involucro/app.version=$(git describe)" ./cmd/involucro
+      ./$FILENAME --version
+    fi
+  - |
+    if [[ "$MODE" == "integration" ]]; then
+      ./$FILENAME wrap-yourself
+      go test -v $PKGS
+    fi
+
+deploy:
+  - provider: releases
+    skip_cleanup: true
+    api_key:
+      secure: "CY9QCD1XsYfwqi/qbBNhvnGzL2HNxg09HuoBoHMJt/gBY1LdnF0o3YLazkzLZr83AvWjnqNcUv1M5At8YGEpF8DPsqwqyAKWXLSx8Oqa72uScspN6GUeUkOnpA5BuYjIY/Xk3KuABmHnZgUpP94WC9UGcitAfK8QxTb88E4bulCj9g+LMlTKTk1WNMLkwPmjkEz1nK6+65hxyRhHnkhKgXcJ/9ImOozzNth7q0lszPnVmYNA1sSknDT3ETBpru6CTjOhOEcXj1rfOVjVzl1zguupS28t1KDz3yLThEJCxqpIZUyPjIsqlYbh8T5uBZ1uXy5VtByvWU5CzDpLwQzJZEttOtSbOuwvT8nSD1iEzDQjn+Q+1Y+tnPToJSQpXxCgmvg3btWkXmMuTHew9spAfbafQI8VC0E8331gR4z2Jx2f82avM13qyaNNSgTnWIPerdBq52/nju+HQ+cP4Ph4HEJdaNxRQjhmWQpxvNo9AHKyHFCMw4+ENq+yIqGfAaMCrjHqZ+TyFGqJ+XjcLsbBmksBvsYdPo99tSQO+sXjEsW2GD0MOleFBSTz2TvBPmMqjZYE17aJYKKQgDACyEcNZ24Vy6PTCImRGbz1ipgRgL6X9gZRyFqZredJTC8LzU+0HvzJX1yFgPxFMmqS0K5V981BOEZxykIqgUMctX6oyrU="
+    file:
+      - involucro
+    on:
+      tags: true
+      repo: thriqon/involucro
+      condition: $MODE = unit && $TRAVIS_OS_NAME = linux
+
+  - provider: releases
+    skip_cleanup: true
+    api_key:
+      secure: "CY9QCD1XsYfwqi/qbBNhvnGzL2HNxg09HuoBoHMJt/gBY1LdnF0o3YLazkzLZr83AvWjnqNcUv1M5At8YGEpF8DPsqwqyAKWXLSx8Oqa72uScspN6GUeUkOnpA5BuYjIY/Xk3KuABmHnZgUpP94WC9UGcitAfK8QxTb88E4bulCj9g+LMlTKTk1WNMLkwPmjkEz1nK6+65hxyRhHnkhKgXcJ/9ImOozzNth7q0lszPnVmYNA1sSknDT3ETBpru6CTjOhOEcXj1rfOVjVzl1zguupS28t1KDz3yLThEJCxqpIZUyPjIsqlYbh8T5uBZ1uXy5VtByvWU5CzDpLwQzJZEttOtSbOuwvT8nSD1iEzDQjn+Q+1Y+tnPToJSQpXxCgmvg3btWkXmMuTHew9spAfbafQI8VC0E8331gR4z2Jx2f82avM13qyaNNSgTnWIPerdBq52/nju+HQ+cP4Ph4HEJdaNxRQjhmWQpxvNo9AHKyHFCMw4+ENq+yIqGfAaMCrjHqZ+TyFGqJ+XjcLsbBmksBvsYdPo99tSQO+sXjEsW2GD0MOleFBSTz2TvBPmMqjZYE17aJYKKQgDACyEcNZ24Vy6PTCImRGbz1ipgRgL6X9gZRyFqZredJTC8LzU+0HvzJX1yFgPxFMmqS0K5V981BOEZxykIqgUMctX6oyrU="
+    file:
+      - involucro.darwin
+    on:
+      tags: true
+      repo: thriqon/involucro
+      condition: $MODE = unit && $TRAVIS_OS_NAME = osx
+
+  - provider: releases
+    skip_cleanup: true
+    api_key:
+      secure: "CY9QCD1XsYfwqi/qbBNhvnGzL2HNxg09HuoBoHMJt/gBY1LdnF0o3YLazkzLZr83AvWjnqNcUv1M5At8YGEpF8DPsqwqyAKWXLSx8Oqa72uScspN6GUeUkOnpA5BuYjIY/Xk3KuABmHnZgUpP94WC9UGcitAfK8QxTb88E4bulCj9g+LMlTKTk1WNMLkwPmjkEz1nK6+65hxyRhHnkhKgXcJ/9ImOozzNth7q0lszPnVmYNA1sSknDT3ETBpru6CTjOhOEcXj1rfOVjVzl1zguupS28t1KDz3yLThEJCxqpIZUyPjIsqlYbh8T5uBZ1uXy5VtByvWU5CzDpLwQzJZEttOtSbOuwvT8nSD1iEzDQjn+Q+1Y+tnPToJSQpXxCgmvg3btWkXmMuTHew9spAfbafQI8VC0E8331gR4z2Jx2f82avM13qyaNNSgTnWIPerdBq52/nju+HQ+cP4Ph4HEJdaNxRQjhmWQpxvNo9AHKyHFCMw4+ENq+yIqGfAaMCrjHqZ+TyFGqJ+XjcLsbBmksBvsYdPo99tSQO+sXjEsW2GD0MOleFBSTz2TvBPmMqjZYE17aJYKKQgDACyEcNZ24Vy6PTCImRGbz1ipgRgL6X9gZRyFqZredJTC8LzU+0HvzJX1yFgPxFMmqS0K5V981BOEZxykIqgUMctX6oyrU="
+    file:
+      - involucro32.exe
+      - involucro.exe
+    on:
+      tags: true
+      repo: thriqon/involucro
+      condition: $MODE = windows-build
+
+  - provider: script
+    skip_cleanup: true
+    script: ./involucro upload-to-hub
+    on:
+      condition: $MODE = integration && $DOCKER_VERSION = latest
+
+notifications:
+  irc: "chat.freenode.net#involucro"
